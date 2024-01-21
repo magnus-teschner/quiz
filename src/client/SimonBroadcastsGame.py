@@ -27,7 +27,7 @@ import time
 from client.Player import PlayersList
 
 # For None-blocking keyboard input (just for windows)
-#import msvcrt
+import msvcrt
 
 ######################################  CONSTANTS
 WAIT__MILLISECONDS_FOR_ANSWER = 1000

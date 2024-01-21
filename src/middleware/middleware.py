@@ -23,7 +23,7 @@ MSGLEN = 10000 # bytes?   # maximum length of message over tcp
 SUBNETMASK = "255.255.255.0"
 BROADCAST_LISTENER_SLEEP = 10 # microseconds
 
-IP_ADRESS_OF_THIS_PC = "127.0.0.1" #socket.gethostbyname(socket.gethostname())
+IP_ADRESS_OF_THIS_PC = socket.gethostbyname(socket.gethostname())
 net = ipaddress.IPv4Network(IP_ADRESS_OF_THIS_PC + '/' + SUBNETMASK, False)
 BROADCAST_IP = net.broadcast_address.exploded
 
