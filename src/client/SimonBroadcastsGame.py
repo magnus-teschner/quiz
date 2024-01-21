@@ -1,7 +1,4 @@
-"""
-This python script represents the game logic for the simon says game.
-the points, the game state and all the nessecarry functions to compute anything related to the game are here!
-"""
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))    # this adds the src folder to the path # now you can import stuff
@@ -30,7 +27,7 @@ import time
 from client.Player import PlayersList
 
 # For None-blocking keyboard input (just for windows)
-import msvcrt
+#import msvcrt
 
 ######################################  CONSTANTS
 WAIT__MILLISECONDS_FOR_ANSWER = 1000
