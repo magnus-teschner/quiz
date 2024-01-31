@@ -47,8 +47,8 @@ class Statemachine():
         def state_initializing():
             print(f"UUID: {Middleware.MY_UUID}")
             self.playerName = input("Select your Player Name: ")
-            gamePort = input("Select Game Room Port (Leave Empty for default value of 60000) : ")
-            self.gameRoomPort = (int(gamePort) if gamePort else 60000)
+            gamePort = input("Select Game Room Port (Leave Empty for default value of 61424) : ")
+            self.gameRoomPort = (int(gamePort) if gamePort else 61424)
             self.players.addPlayer(Middleware.MY_UUID, self.playerName)
 
             if True:
@@ -58,13 +58,14 @@ class Statemachine():
 
         def Lobby_entry():
             self.middleware.leaderUUID = Middleware.MY_UUID
-            #self.middleware.subscribeBroadcastListener(self.respondWithPlayerList)
+            self.middleware.subscribeBroadcastListener(self.respondWithPlayerList)
             #self.middleware.subscribeTCPUnicastListener(self.listenForPlayersList)
 
             command = "enterLobby"
             data = self.playerName
             self.middleware.broadcastToAll(command, data)
             print("send broadcast")
+
         tempState.entry = Lobby_entry
 
 
