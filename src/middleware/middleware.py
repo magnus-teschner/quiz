@@ -28,7 +28,7 @@ net = ipaddress.IPv4Network(IP_ADRESS_OF_THIS_PC + '/' + SUBNETMASK, False)
 BROADCAST_IP = net.broadcast_address.exploded
 
 
-class Middleware1():
+class Middleware():
     #deliveryQueue = Q()
     
     ipAdresses = {} # {uuid: (ipadress, port)} (str , int)

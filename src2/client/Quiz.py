@@ -43,6 +43,7 @@ class Statemachine():
     def __init__(self):
         Statemachine.UUID = str(uuid.uuid4())
         print(Statemachine.UUID, " and ", self  )
+        self.question_answer = ''
        
         self.middleware = Middleware(Statemachine.UUID, self)
         Statemachine.currentState = "Initializing"
@@ -137,18 +138,31 @@ class Statemachine():
         tempState.entry = wait_for_start_entry
 
         def wait_for_start():
+            if self.question_answer != '':
+                self.switchToState("play_game")
 
+            elif self.middleware.leaderUUID == Middleware.MY_UUID:
+                Statemachine.switchStateTo("wait_for_peers")
 
+        tempState.run = wait_for_start
 
+        tempState = self.State("play_game")
+        def play_game():
+            print(f"Question: {self.question_answer["question"]}")
+            print(f"""a): {self.question_answer["a"]} \n
+           b): {self.question_answer["b"]} \n
+           c): {self.question_answer["c"]} \n""")
+            answer = input("Enter your answer: ")
+            self.middleware.multicastReliable("playerResponse", answer)
 
-       
+        tempState.run = play_game
 
+        def play_game_exit():
+            #Middleware.unSubscribeOrderedDeliveryQ(self.onReceiveGameStart_f)
+            #Middleware.subscribeOrderedDeliveryQ(self.collectPlayerInput_f)
+            pass 
 
-            
-
-
-
-    
+        tempState.exit = play_game_exit
 
 
     def listenForPlayersList(self, messengerUUID:str, messengerSocket, command:str, playersList:str):
