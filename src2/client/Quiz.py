@@ -2,12 +2,11 @@ import sys
 import os
 import uuid
 from time import sleep
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from middleware.middleware import Middleware
-import time
+
 from Player import PlayersList
 
-import msvcrt
 
 states = {}
 class Statemachine():
@@ -41,9 +40,13 @@ class Statemachine():
         cls.currentState = targetState
 
     def __init__(self):
+        Statemachine.UUID = str(uuid.uuid4())
+        print(Statemachine.UUID, " and ", self  )
+       
         self.middleware = Middleware(Statemachine.UUID, self)
         Statemachine.currentState = "Initializing"
         tempState = self.State("Initializing")
+
         def state_initializing():
             print(f"UUID: {Middleware.MY_UUID}")
             self.playerName = input("Select your Player Name: ")

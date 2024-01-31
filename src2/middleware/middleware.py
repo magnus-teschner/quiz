@@ -15,7 +15,7 @@ usleep = lambda x: sleep(x/1000_000.0) # sleep for x microseconds
 from dataclasses import dataclass
 
 
-
+print("Hallo test")
 ######################################### PARAMETER Constants
 BROADCAST_PORT = 61424
 BUFFER_SIZE = 1024 # bytes
@@ -23,7 +23,20 @@ MSGLEN = 10000 # bytes?   # maximum length of message over tcp
 SUBNETMASK = "255.255.255.0"
 BROADCAST_LISTENER_SLEEP = 10 # microseconds
 
-IP_ADRESS_OF_THIS_PC = socket.gethostbyname(socket.gethostname())
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        IP = s.getsockname()[0]
+        print(IP)
+        s.close()
+        return IP
+    except Exception as e:
+        print(f"Fehler bei der Ermittlung der lokalen IP-Adresse: {e}")
+        return None
+
+
+IP_ADRESS_OF_THIS_PC = get_local_ip()
 net = ipaddress.IPv4Network(IP_ADRESS_OF_THIS_PC + '/' + SUBNETMASK, False)
 BROADCAST_IP = net.broadcast_address.exploded
 
@@ -40,7 +53,7 @@ class Middleware():
     orderedReliableMulticast_ListenerList = []
 
 
-    def __init__(self,UUID, statemashine):
+    def __init__(self, UUID, statemashine):
         Middleware.MY_UUID = UUID 
         self.statemashine =  statemashine
         self._broadcastHandler = BroadcastHandler()
