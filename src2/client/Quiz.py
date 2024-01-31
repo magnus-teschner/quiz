@@ -113,10 +113,11 @@ class Statemachine():
         tempState.entry = wait_for_responses_entry
 
         def wait_for_response():
+            """
             if self.receiver_counter == len(self.players.playerList) -1:
                 self.switchToState("Lobby")
             self.middleware.multicastReliable('toLobby', "placeholder")
-
+            """
         tempState.run = wait_for_response
 
         def wait_for_response_exit():
