@@ -50,7 +50,20 @@ class Statemachine():
             gamePort = input("Select Game Room Port: \nLeave Empty for default value of 60000")
             self.gameRoomPort = (int(gamePort) if gamePort else 60000)
 
-a = Statemachine()
+        tempState.run = state_initializing
+
+    def runLoop(self):
+        states[self.currentState].run()
+
+
+
+if __name__ == 'main':
+    print("Peer to peer quiz game")
+    SM = Statemachine()
+    while True:
+        SM.runLoop()
+        sleep(1/1000000)
+
 
 
 
