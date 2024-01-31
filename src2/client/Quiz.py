@@ -39,14 +39,11 @@ class Statemachine():
 
         if "entry" in dir(states[targetState]):
             states[targetState].entry()
-
         cls.currentState = targetState
 
     def __init__(self):
+        self.question_answer = ""
         Statemachine.UUID = str(uuid.uuid4())
-        print(Statemachine.UUID, " and ", self  )
-        self.question_answer = ''
-       
         self.middleware = Middleware(Statemachine.UUID, self)
         Statemachine.currentState = "Initializing"
         tempState = self.State("Initializing")
@@ -61,18 +58,16 @@ class Statemachine():
             if True:
                 self.switchToState("Lobby")
         tempState.run = state_initializing
-        tempState = self.State("Lobby")
 
+        tempState = self.State("Lobby")
         def Lobby_entry():
             self.middleware.leaderUUID = Middleware.MY_UUID
             self.middleware.subscribeBroadcastListener(self.respondWithPlayerList)
             self.middleware.subscribeTCPUnicastListener(self.listenForPlayersList)
-
             command = "enterLobby"
             data = self.playerName
+            print("\nSent Broadcast!")
             self.middleware.broadcastToAll(command, data)
-            print("send broadcast")
-
         tempState.entry = Lobby_entry
 
         def lobby_waiting():
@@ -81,94 +76,84 @@ class Statemachine():
                 self.switchToState("wait_for_peers")
             else:
                 self.switchToState("wait_for_start")
-
         tempState.run = lobby_waiting
 
-        # Leader states
-
+        #States specific to the leader of the Quiz Game
         tempState = self.State("wait_for_peers")
-
         def wait_for_peers_entry():
             if len(self.players.playerList) < 3:
-                print("Wait for players - 3 players needed at minimum")
+                print("Waiting for more players - 3 players needed at minimum!")
         tempState.entry = wait_for_peers_entry
 
         def wait_for_peers():
             if len(self.players.playerList) >= 3:
                 self.switchToState("start_new_round")
-
         tempState.run = wait_for_peers
 
         tempState = self.State("start_new_round")
-
         def start_new_round():
             print_lock = threading.Lock()
-
-            # In your functions where printing is performed
             with print_lock:
                 print("Your message here")
                 self.question = input("What is your question?")
                 self.answer_a = input("Enter answer possibility a: ")
                 self.answer_b = input("Enter answer possibility b: ")
-                self.answer_c = input("Enter answer possibility b: ")
+                self.answer_c = input("Enter answer possibility c: ")
                 self.correct_answer = input("Enter letter of correct answer (e.G a or b or c): ")
             self.question_answer = [self.question,self.answer_a, self.answer_b, self.answer_c, self.correct_answer]
             self.middleware.multicastReliable('startNewRound', str(self.question_answer))
-            print('Multicasted question and answers')
+            print(f'Multicasted question and answers: {str(self.question_answer)}')
             self.switchToState("wait_for_responses")
-
         tempState.run = start_new_round
 
         tempState = self.State("wait_for_responses")
         def wait_for_responses_entry():
+            self.receiver_counter = 0
             self.middleware.subscribeTCPUnicastListener(self.collectInput)
-
         tempState.entry = wait_for_responses_entry
 
         def wait_for_response():
-            pass #stays empty
+            if self.receiver_counter == len(self.players.playerList) -1:
+                self.switchToState("Lobby")
+            self.middleware.multicastReliable('toLobby', "placeholder")
 
         tempState.run = wait_for_response
 
         def wait_for_response_exit():
             self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
-
         tempState.exit = wait_for_response_exit
 
-        # Player states
+        # #States specific to the players which are not leaders
         tempState = self.State("wait_for_start")
         def wait_for_start_entry():
-            #print("Waiting for game start")
             self.middleware.subscribeTCPUnicastListener(self.onReceiveNewRound)
             self.middleware.subscribeTCPUnicastListener(self.collectInput)
-
+            self.middleware.subscribeTCPUnicastListener(self.toLobby)
         tempState.entry = wait_for_start_entry
 
         def wait_for_start():
-            #print("wait_for_start")
             if self.question_answer != '':
                 self.switchToState("play_game")
-
             elif self.middleware.leaderUUID == Middleware.MY_UUID:
                 Statemachine.switchStateTo("wait_for_peers")
-
         tempState.run = wait_for_start
 
         tempState = self.State("play_game")
         def play_game():
-            #print("play_game")
             print(f"Question: {self.question_answer[0]}")
-            print(f"""a): {self.question_answer[1]} \n
-           b): {self.question_answer[2]} \n
-           c): {self.question_answer[3]} \n""")
+            print(
+                f"""a): {self.question_answer[1]} \n
+                    b): {self.question_answer[2]} \n
+                    c): {self.question_answer[3]} \n""")
             answer = input("Enter your answer: ")
             self.middleware.multicastReliable("playerResponse", answer)
-
         tempState.run = play_game
 
         def play_game_exit():
             self.middleware.unSubscribeTCPUnicastListener(self.onReceiveNewRound)
             self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
+            self.middleware.unSubscribeTCPUnicastListener(self.toLobby)
+            self.question_answer = ""
              
 
         tempState.exit = play_game_exit
@@ -187,22 +172,22 @@ class Statemachine():
                 self.middleware.sendIPAdressesto(messengerUUID)
                 responseCommand = 'PlayerList'
                 responseData = self.players.toString()
-                print(responseData)
                 self.middleware.sendTcpMessageTo(messengerUUID, responseCommand, responseData)
 
     def onReceiveNewRound(self, messengerUUID, clientsocket, messageCommand, messageData):
-        print("in receive round")
-        if messageCommand == "startNewRound":
-            print("do conversion")
-            self.question_answer = ast.literal_eval(messageData)
+            if messageCommand == "startNewRound":
+                self.question_answer = ast.literal_eval(messageData)
 
     def collectInput(self, messengerUUID, clientsocket, messageCommand, messageData):
-        print("collect input")
         if messageCommand == 'playerResponse':
-            if messageData == self.question_answer[4]:
+            if messageData == self.question_answer[-1]:
                 self.players.addPoints(messengerUUID, 10)
-                self.question_answer = {}
                 self.players.printLobby()
+
+    def toLobby(self, messengerUUID, clientsocket, messageCommand, messageData):
+        if messageCommand == 'toLobby':
+            self.switchToState("Lobby")
+
     
 
     def runLoop(self):
@@ -210,12 +195,10 @@ class Statemachine():
 
 
 if __name__ == '__main__':
-    print("Peer to peer quiz game")
+    print("Welcome to the peer to peer quiz game!")
     SM = Statemachine()
     while True:
         SM.runLoop()
-        sleep(1/1000000)
-        #print(f"State Machine Player List: {SM.players.playerList}")
 
 
 
