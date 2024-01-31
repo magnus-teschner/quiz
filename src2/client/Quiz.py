@@ -187,20 +187,14 @@ class Statemachine():
 
     def collectInput(self, messengerUUID, command, data):
         if command == 'playerResponse':
-            if data == self.question_answer.correct_answer:
+            if data == self.question_answer["correct_answer"]:
                 self.players.addPoints(messengerUUID, 10)
                 self.question_answer = {}
                 self.players.printLobby()
     
 
-
-
-
-
-
     def runLoop(self):
         states[self.currentState].run()
-
 
 
 if __name__ == '__main__':
