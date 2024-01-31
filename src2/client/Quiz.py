@@ -1,7 +1,9 @@
 import sys
 import os
 import uuid
+import ast
 from time import sleep
+import threading
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from middleware.middleware import Middleware
 
@@ -100,13 +102,18 @@ class Statemachine():
         tempState = self.State("start_new_round")
 
         def start_new_round():
-            self.question = input("What is your question?")
-            self.answer_a = input("Enter answer possibility a: ")
-            self.answer_b = input("Enter answer possibility b: ")
-            self.answer_c = input("Enter answer possibility b: ")
-            self.correct_answer = input("Enter letter of correct answer (e.G a or b or c): ")
-            self.question_answer = {"question": self.question,"a": self.answer_a, "b": self.answer_b, "c": self.answer_c, "correct": self.correct_answer}
-            self.multicastReliable('startNewRound', str(self.question_answer))
+            print_lock = threading.Lock()
+
+            # In your functions where printing is performed
+            with print_lock:
+                print("Your message here")
+                self.question = input("What is your question?")
+                self.answer_a = input("Enter answer possibility a: ")
+                self.answer_b = input("Enter answer possibility b: ")
+                self.answer_c = input("Enter answer possibility b: ")
+                self.correct_answer = input("Enter letter of correct answer (e.G a or b or c): ")
+            self.question_answer = [self.question,self.answer_a, self.answer_b, self.answer_c, self.correct_answer]
+            self.middleware.multicastReliable('startNewRound', str(self.question_answer))
             print('Multicasted question and answers')
             self.switchToState("wait_for_responses")
 
@@ -114,7 +121,7 @@ class Statemachine():
 
         tempState = self.State("wait_for_responses")
         def wait_for_responses_entry():
-            pass #subscribe to multicast
+            self.middleware.subscribeTCPUnicastListener(self.collectInput)
 
         tempState.entry = wait_for_responses_entry
 
@@ -124,20 +131,21 @@ class Statemachine():
         tempState.run = wait_for_response
 
         def wait_for_response_exit():
-            pass #unsubscribe to multicast
+            self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
 
         tempState.exit = wait_for_response_exit
 
         # Player states
         tempState = self.State("wait_for_start")
         def wait_for_start_entry():
-            print("Waiting for game start")
-            #Middleware.subscribeOrderedDeliveryQ(self.onReceiveNewRound)
-            #Middleware.subscribeOrderedDeliveryQ(self.collectInput)
+            #print("Waiting for game start")
+            self.middleware.subscribeTCPUnicastListener(self.onReceiveNewRound)
+            self.middleware.subscribeTCPUnicastListener(self.collectInput)
 
         tempState.entry = wait_for_start_entry
 
         def wait_for_start():
+            #print("wait_for_start")
             if self.question_answer != '':
                 self.switchToState("play_game")
 
@@ -148,19 +156,20 @@ class Statemachine():
 
         tempState = self.State("play_game")
         def play_game():
-            print(f"Question: {self.question_answer["question"]}")
-            print(f"""a): {self.question_answer["a"]} \n
-           b): {self.question_answer["b"]} \n
-           c): {self.question_answer["c"]} \n""")
+            #print("play_game")
+            print(f"Question: {self.question_answer[0]}")
+            print(f"""a): {self.question_answer[1]} \n
+           b): {self.question_answer[2]} \n
+           c): {self.question_answer[3]} \n""")
             answer = input("Enter your answer: ")
             self.middleware.multicastReliable("playerResponse", answer)
 
         tempState.run = play_game
 
         def play_game_exit():
-            #Middleware.unSubscribeOrderedDeliveryQ(self.onReceiveGameStart_f)
-            #Middleware.subscribeOrderedDeliveryQ(self.collectPlayerInput_f)
-            pass 
+            self.middleware.unSubscribeTCPUnicastListener(self.onReceiveNewRound)
+            self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
+             
 
         tempState.exit = play_game_exit
 
@@ -181,13 +190,16 @@ class Statemachine():
                 print(responseData)
                 self.middleware.sendTcpMessageTo(messengerUUID, responseCommand, responseData)
 
-    def onReceiveNewRound(self, command, data):
-        if command == "startNewRound":
-            self.answer = json.loads(data)
+    def onReceiveNewRound(self, messengerUUID, clientsocket, messageCommand, messageData):
+        print("in receive round")
+        if messageCommand == "startNewRound":
+            print("do conversion")
+            self.question_answer = ast.literal_eval(messageData)
 
-    def collectInput(self, messengerUUID, command, data):
-        if command == 'playerResponse':
-            if data == self.question_answer["correct_answer"]:
+    def collectInput(self, messengerUUID, clientsocket, messageCommand, messageData):
+        print("collect input")
+        if messageCommand == 'playerResponse':
+            if messageData == self.question_answer[4]:
                 self.players.addPoints(messengerUUID, 10)
                 self.question_answer = {}
                 self.players.printLobby()
@@ -203,7 +215,8 @@ if __name__ == '__main__':
     while True:
         SM.runLoop()
         sleep(1/1000000)
-        print(f"State Machine Player List: {SM.players.playerList}")
+        #print(f"State Machine Player List: {SM.players.playerList}")
+
 
 
 
