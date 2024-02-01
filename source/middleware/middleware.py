@@ -175,7 +175,7 @@ class Middleware():
                 data = Middleware.MY_UUID
                 #print('\nsend voting command with my UUID (' + Middleware.MY_UUID + ') to lowerNeighbour')
                 self.sendTcpMessageTo(self.findLowerNeighbour(), command, data)
-                pass
+                
             # if greater UUID
             elif data > Middleware.MY_UUID:
                 # send received UUID to neighbour
