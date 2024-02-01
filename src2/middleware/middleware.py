@@ -29,19 +29,17 @@ BROADCAST_IP = net.broadcast_address.exploded
 
 
 class Middleware():
-    #deliveryQueue = Q()
     
     ipAdresses = {} # {uuid: (ipadress, port)} (str , int)
-    MY_UUID = '' # later changed in the init, it is here to define it as a class variable, so that it is accessable easyly 
+    #MY_UUID = ''
 
     neighborUUID = None
     neighborAlive = False
     
-    orderedReliableMulticast_ListenerList = []
 
 
     def __init__(self,UUID, statemashine):
-        Middleware.MY_UUID = UUID 
+        self.MY_UUID = UUID 
         self.statemashine =  statemashine
         self._broadcastHandler = BroadcastHandler()
         self._unicastHandler = UDPUnicastHandler()
@@ -58,31 +56,15 @@ class Middleware():
         # Subscribe heartbeat lost player handler to tcp unicastlistener
         self.subscribeTCPUnicastListener(self._listenLostPlayer)
 
-        # For Reliable Muticast with Total Ordering with ISIS-Algorithm
-        self.highestAgreedSequenceNumber = 0 # sequence Number for Total Ordering (ISIS Algorithm)
-        self.highestbySelfProposedSeqNumber = 0
-        self.subscribeTCPUnicastListener(self._responseFor_requestSequenceNumberForMessage)
-        self.subscribeTCPUnicastListener(self._acceptOrderedMulticast)
-
-        # middelware objekt Variables
-        self._holdBackQueue = HoldBackQ()
         self.leaderUUID = ''
 
-    # INFO: This works
     def findNeighbor(self, ownUUID, ipaddresses):
-        # only to be called if we don't yet have the neighbor
-        # make ordered dict - uuid remains dict key
         ordered = sorted(ipaddresses.keys())
-        # if len(ordered)>0:
-            # print("\nsorted uuid dict:\t")
-            # print(ordered)
         if ownUUID in ordered:
             ownIndex = ordered.index(ownUUID)
 
             uuidList = list(ordered)
-            # add neighbor with larger uuid as neighbor
             if uuidList[ownIndex - 1] != ownUUID:
-                # another uuid exists and it's not our own
                 print("neighbor is\t")
                 print(uuidList[ownIndex - 1])
                 return uuidList[ownIndex - 1]
@@ -92,49 +74,35 @@ class Middleware():
         while True:
             Middleware.neighborAlive = False
             if not Middleware.neighborUUID:
-                # we don't yet have a neighbor --> find one
                 Middleware.neighborUUID = self.findNeighbor(Middleware.MY_UUID, Middleware.ipAdresses)
                 sleep(1)
             else:
-                # we have a neighbor --> ping it
                 self.sendMessageTo(Middleware.neighborUUID, 'hbping', Middleware.MY_UUID)
                 sleep(1)
                 if ctr < 3 and not Middleware.neighborAlive:
                     ctr += 1
                 elif not Middleware.neighborAlive and ctr >= 3:
                     ctr = 0
-                    # update own ipAdresses
                     Middleware.ipAdresses.pop(Middleware.neighborUUID, None)
-                    # send update to everyone else
                     self.multicastReliable('lostplayer', Middleware.neighborUUID)
-                    # check if neighbor is leader
                     if Middleware.neighborUUID == self.leaderUUID:
                         self.initiateVoting()
-                    
                     Middleware.neighborUUID = None
                 elif Middleware.neighborAlive:
                     ctr = 0
                 else:
-                    #should never get here. if we do: reset neighbor and counter
                     Middleware.neighborUUID = None
                     ctr = 0
 
     def _listenHeartbeats(self, messengeruuid:str, command:str, data:str):
         if command == 'hbping':
-            # respond with alive answer
-            #print("received ping from\t")
-            #print(messengeruuid)
             self.sendMessageTo(messengeruuid, 'hbresponse', Middleware.MY_UUID)
         elif command == 'hbresponse':
-            # set flag alive
             if messengeruuid == Middleware.neighborUUID:
-                #print("received ping response from\t")
-                #print(messengeruuid)
                 Middleware.neighborAlive = True
 
     def _listenLostPlayer(self, messengerUUID:str, clientsocket:socket.socket, command:str, data:str):
         if command == 'lostplayer':           
-        #    # remove the lost host from the list and look for new neighbor
             Middleware.ipAdresses.pop(data, None)            
             Middleware.neighborUUID = None
     
@@ -164,83 +132,6 @@ class Middleware():
         for key, addr in Middleware.ipAdresses.items():
             if key != Middleware.MY_UUID:
                 self._tcpUnicastHandler.sendMessage(addr, message)
-
-    def multicastOrderedReliable(self, command:str, message:str):
-        """multicast using tcp 
-        ordered with Total Ordering using the ISIS algorithm
-
-        Args:
-            command (str): [description]
-            data (str, optional): [description]. Defaults to ''.
-        """
-        # https://cse.buffalo.edu/~stevko/courses/cse486/spring19/lectures/12-multicast2.pdf
-        # https://cse.buffalo.edu/~stevko/courses/cse486/spring19/lectures/11-multicast1.pdf
-
-        """ • Sender multicasts message to everyone
-            • Reply with proposed priority (sequence no.)
-                – Larger than all observed agreed priorities
-                – Larger than any previously proposed (by self) priority
-            • Store message in priority queue – Ordered by priority (proposed or agreed)
-                – Mark message as undeliverable
-            • Sender chooses agreed priority, re-multicasts message with agreed priority
-                – Maximum of all proposed priorities
-            • Upon receiving agreed (final) priority
-                – Mark message as deliverable
-                – Reorder the delivery queue based on the priorities
-                – Deliver any deliverable messages at the front of priority queue
-        """
-
-        messageID = str(uuid.uuid4())        
-
-        # add to own holdbackQueue
-        ownPropodesSeqNum = max(self.highestbySelfProposedSeqNumber, self.highestAgreedSequenceNumber) +1
-        self._holdBackQueue.append(OrderedMessage(ownPropodesSeqNum, '', '', messageID, Middleware.MY_UUID, False))
-        self.highestbySelfProposedSeqNumber = ownPropodesSeqNum
-        proposedSeqNumbers = []
-        threadsList = []
-        # make concurrent (multithreaded requests)
-        for key, addr in Middleware.ipAdresses.items():
-            if key != Middleware.MY_UUID:
-                t = threading.Thread(target = self._requestSeqNum, args = (addr,messageID, proposedSeqNumbers))
-                t.start()
-                threadsList.append(t)
-        # wait for the requests to finish
-        for t in threadsList:
-            t.join()
-
-        proposedSeqNumbers.append(ownPropodesSeqNum)
-        highestN = max(proposedSeqNumbers)
-        self.highestAgreedSequenceNumber = max(highestN, self.highestAgreedSequenceNumber)
-        self._holdBackQueue.updateData(messageID, highestN, command, message)
-        self.multicastReliable('OrderedMulticast with agreed SeqNum', command+'$'+message+'$'+str(highestN)+'$'+messageID)
-
-    def _requestSeqNum(self, addr,messageID, returnsList:list):
-        command = 'requestSequenceNumberForMessage'
-        returnsList.append(int( self._tcpUnicastHandler.sendTcpRequestTo(addr,'requestSequenceNumberForMessage'+':'+messageID) ))
-
-    # self.subscribeTCPUnicastListener(self._responseFor_requestSequenceNumberForMessage) in middleware.__init__
-    def _responseFor_requestSequenceNumberForMessage(self, messengerUUID:str, clientsocket:socket.socket, command:str, messageID:str):
-        if command == 'requestSequenceNumberForMessage':
-            proposedSeqNum = max(self.highestbySelfProposedSeqNumber, self.highestAgreedSequenceNumber) +1
-            self.highestbySelfProposedSeqNumber = proposedSeqNum
-            self._holdBackQueue.append(OrderedMessage(proposedSeqNum, '', '', messageID, messengerUUID, False))
-            clientsocket.send(str.encode(str(proposedSeqNum) ) )
-        # socket gets closed after this returns
-    
-    # self.subscribeTCPUnicastListener(self._acceptOrderedMulticast) in middleware.__init__
-    def _acceptOrderedMulticast(self, messengerUUID:str, clientsocket:socket.socket, command:str, data:str):
-        if command == 'OrderedMulticast with agreed SeqNum':
-            data = data.split('$')
-            assert len(data) == 4, 'something went wrong with the spliting of the the data'
-            messageCommand = data[0]
-            messageData = data[1]
-            messageSeqNum = int(data[2])
-            messageID = data[3]
-
-            self.highestAgreedSequenceNumber = max(self.highestAgreedSequenceNumber, messageSeqNum)
-            self._holdBackQueue.updateData(messageID, messageSeqNum, messageCommand, messageData)
-
-
 
     def sendIPAdressesto(self,uuid):
         command='updateIpAdresses'
@@ -282,7 +173,6 @@ class Middleware():
         cls.orderedReliableMulticast_ListenerList.append(observer_func)
     @classmethod
     def unSubscribeOrderedDeliveryQ(cls, rmFunc):
-        # remove all occurences of Function
         cls.orderedReliableMulticast_ListenerList = [x for x in cls.orderedReliableMulticast_ListenerList if x != rmFunc]
         
     def _updateAdresses(self, messengerUUID:str, clientsocket, command:str, data:str):
@@ -593,59 +483,3 @@ class BroadcastHandler():
                     for observer_func in self._listenerList:
                         observer_func(messengerUUID, messageCommand, messageData)
                 data = None
-
-
-@dataclass(order=True)
-class OrderedMessage:
-    messageSeqNum: int
-    messageCommand: str
-    messageData: str
-    messageID:str
-    messengerUUID:str
-    deliverable:bool
-
-class HoldBackQ():
-    def __init__(self):
-        self._queue = list()
-    def append(self,x:OrderedMessage):
-        self._queue.append(x)
-        #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NICE")
-        #print('new message in HoldBackQ: \t', x)
-        # Upon receiving agreed (final) priority
-        #   – Mark message as deliverable
-        #   – Reorder the delivery queue based on the priorities
-        #   – Deliver any deliverable messages at the front of priority queue
-        # 
-        self.checkForDeliverables()
-    
-    def updateData(self, messageID:str, messageSeqNum:int, messageCommand:str, messageData:str):
-        #find Messagewith message ID
-        # set messageSeqNum
-        # set messageCommand
-        # set messageData
-        # setDeliverableTrue
-        #print('HolbackQ updateData()')
-        
-        for m in self._queue:
-            if m.messageID == messageID:
-                m.messageSeqNum = messageSeqNum
-                m.messageCommand = messageCommand
-                m.messageData = messageData
-                m.deliverable = True
-                break
-
-        self.checkForDeliverables()
-
-    def checkForDeliverables(self):
-        # sort Q
-        # check if message with lowest ID is deliverable
-        # deliver this message
-        sortedQ = sorted(self._queue)
-        for m in sortedQ:
-            if m.deliverable:
-                for observer_func in Middleware.orderedReliableMulticast_ListenerList:
-                    observer_func(m.messengerUUID, m.messageCommand, m.messageData)
-                self._queue.remove(m)
-
-            else:
-                break
