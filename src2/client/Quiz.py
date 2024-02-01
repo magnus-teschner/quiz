@@ -91,6 +91,10 @@ class Statemachine():
         tempState.run = wait_for_peers
 
         tempState = self.State("start_new_round")
+        def start_new_round_entry():
+            self.commited_answers = 0
+        tempState.entry = start_new_round_entry
+        
         def start_new_round():
             self.question = input("\n What is your question? \n")
             self.answer_a = input("Enter answer possibility a: ")
@@ -139,7 +143,7 @@ class Statemachine():
                 self.middleware.multicastReliable("playerResponse", answer)
                 if answer == self.question_answer[4]:
                     self.players.addPoints(self.middleware.MY_UUID, 10)
-                    self.players.printLobby()
+                self.players.printLobby()
                 
                 self.answered = True
 
@@ -178,15 +182,12 @@ class Statemachine():
 
     def collectInput(self, messengerUUID, clientsocket, messageCommand, messageData):
         if messageCommand == 'playerResponse':
-            print("received_input")
             self.commited_answers += 1
             if messageData == self.question_answer[-1]:
-                print("add_points")
                 self.players.addPoints(messengerUUID, 10)
             self.players.printLobby()
 
             if self.middleware.leaderUUID == self.middleware.MY_UUID and self.commited_answers == (len(self.players.playerList) -1):
-                print("fullfilled leader")
                 self.switchToState("start_new_round")
 
             elif self.middleware.leaderUUID != self.middleware.MY_UUID and self.commited_answers == (len(self.players.playerList) -2) and self.answered:
