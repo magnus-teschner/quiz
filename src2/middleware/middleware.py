@@ -64,8 +64,8 @@ class Middleware():
 
             uuidList = list(ordered)
             if uuidList[ownIndex - 1] != ownUUID:
-                print("neighbor is\t")
-                print(uuidList[ownIndex - 1])
+                #print("neighbor is\t")
+                #print(uuidList[ownIndex - 1])
                 return uuidList[ownIndex - 1]
 
     def _sendHeartbeats(self):
@@ -228,7 +228,7 @@ class Middleware():
         # send to lowerNeighbour: voting with my UUID
         command = 'voting'
         data = Middleware.MY_UUID
-        print('Initiate new Voting!\n')
+        #print('Initiate new Voting!\n')
         #print('\nsend voting command with my UUID (' + Middleware.MY_UUID + ') to lowerNeighbour')
         self.sendTcpMessageTo(self.findLowerNeighbour(), command, data)
 
@@ -238,7 +238,7 @@ class Middleware():
 
         neighbourUUID = ordered[ownIndex - 1]
         assert Middleware.MY_UUID != neighbourUUID, 'I am my own neigbour that shouldnt happen'
-        print('Neighbour: ' + neighbourUUID)
+        #print('Neighbour: ' + neighbourUUID)
         return neighbourUUID
         # send to next higher node we start a voting with my UUID
 
@@ -295,7 +295,8 @@ class UDPUnicastHandler():
                         observer_func(messengerUUID, messageCommand, messageData) 
                     data[1] = None
             except:
-                print("Connection was lost!")
+                #print("Connection was lost!")
+                pass
 
     def subscribeUnicastListener(self, observer_func):
         self._listenerList.append(observer_func)
@@ -330,8 +331,9 @@ class TCPUnicastHandler():
             sendSocket.send(messageBytes)
             #print('TCPUnicastHandler: sent message: ', message,"\n\tto: ", addr)
         except ConnectionRefusedError:
-            print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  ERROR')
-            print('Process on address ', addr, 'is not responding')
+            #print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  ERROR')
+            #print('Process on address ', addr, 'is not responding')
+            pass
         finally:
             sendSocket.close() # Further sends are disallowed
         
@@ -396,7 +398,7 @@ class TCPUnicastHandler():
         data = data.decode('utf-8')
 
         if data:
-            print(data)
+            #print(data)
             data=data.split('_')
             messengerUUID = data[0]
             messengerIP = data[1]
@@ -404,7 +406,7 @@ class TCPUnicastHandler():
                                             #(of the sender of this message) is listening on
             #assert address ==  (messengerIP, messengerPort)                              
             message=data[3]
-            print(message)
+            #print(message)
             messageSplit= message.split(':')
             assert len(messageSplit) == 2, "There should not be a ':' in the message"
             messageCommand = messageSplit[0]

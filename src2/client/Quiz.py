@@ -41,6 +41,7 @@ class Statemachine():
         self.players = PlayersList()
         self.question_answer = ""
         self.commited_answers = 0
+        self.answered = False
         Statemachine.UUID = str(uuid.uuid4())
         self.middleware = Middleware(Statemachine.UUID, self)
         Statemachine.currentState = "Initializing"
@@ -60,7 +61,6 @@ class Statemachine():
         tempState = self.State("Lobby")
         def Lobby_entry():
             self.middleware.leaderUUID = self.middleware.MY_UUID
-            print(f"This is leader UUID: {self.middleware.leaderUUID}")
             self.middleware.subscribeBroadcastListener(self.respondWithPlayerList)
             self.middleware.subscribeTCPUnicastListener(self.listenForPlayersList)
             command = "enterLobby"
@@ -71,12 +71,7 @@ class Statemachine():
 
         def lobby_waiting():
             sleep(0.5)
-            print("")
-            print(self.middleware.leaderUUID)
-            print("")
-            print("")
             if self.middleware.leaderUUID == self.middleware.MY_UUID:
-                print("I am leader")
                 self.switchToState("wait_for_peers")
             else:
                 self.switchToState("wait_for_start")
@@ -91,18 +86,17 @@ class Statemachine():
 
         def wait_for_peers():
             if len(self.players.playerList) >= 3:
+                self.players.printLobby()
                 self.switchToState("start_new_round")
         tempState.run = wait_for_peers
 
         tempState = self.State("start_new_round")
         def start_new_round():
-            print_lock = threading.Lock()
-            with print_lock:
-                self.question = input("\n What is your question? \n")
-                self.answer_a = input("Enter answer possibility a: ")
-                self.answer_b = input("Enter answer possibility b: ")
-                self.answer_c = input("Enter answer possibility c: ")
-                self.correct_answer = input("Enter letter of correct answer (e.G a or b or c): ")
+            self.question = input("\n What is your question? \n")
+            self.answer_a = input("Enter answer possibility a: ")
+            self.answer_b = input("Enter answer possibility b: ")
+            self.answer_c = input("Enter answer possibility c: ")
+            self.correct_answer = input("Enter letter of correct answer (e.G a or b or c): ")
             self.question_answer = [self.question,self.answer_a, self.answer_b, self.answer_c, self.correct_answer]
             self.middleware.multicastReliable('startNewRound', str(self.question_answer))
             print(f'Multicasted question and answers: {str(self.question_answer)}')
@@ -115,11 +109,7 @@ class Statemachine():
         tempState.entry = wait_for_responses_entry
 
         def wait_for_response():
-            """
-            if self.receiver_counter == len(self.players.playerList) -1:
-                self.switchToState("Lobby")
-            self.middleware.multicastReliable('toLobby', "placeholder")
-            """
+            pass
         tempState.run = wait_for_response
 
         def wait_for_response_exit():
@@ -136,40 +126,36 @@ class Statemachine():
         def wait_for_start():
             if self.question_answer != '':
                 self.switchToState("play_game")
-            elif self.middleware.leaderUUID == Middleware.MY_UUID:
-                self.switchToState("wait_for_peers")
         tempState.run = wait_for_start
 
         tempState = self.State("play_game")
         def play_game():
-            print(f"Question: {self.question_answer[0]}")
-            print(f"       a) {self.question_answer[1]}")
-            print(f"       b) {self.question_answer[2]}")
-            print(f"       c) {self.question_answer[3]}")
-            answer = input("Enter your answer: ")
-            self.middleware.multicastReliable("playerResponse", answer)
-            if answer == self.question_answer[4]:
-                self.players.addPoints(self.middleware.MY_UUID, 10)
-                self.players.printLobby()
-            self.switchToState("player_wait_for_all_answers")
+            if not self.answered:
+                print(f"Question: {self.question_answer[0]}")
+                print(f"       a) {self.question_answer[1]}")
+                print(f"       b) {self.question_answer[2]}")
+                print(f"       c) {self.question_answer[3]}")
+                answer = input("Enter your answer: ")
+                self.middleware.multicastReliable("playerResponse", answer)
+                if answer == self.question_answer[4]:
+                    self.players.addPoints(self.middleware.MY_UUID, 10)
+                    self.players.printLobby()
+                
+                self.answered = True
+
+            if self.answered and self.commited_answers == (len(self.players.playerList) -2):
+                self.switchToState("wait_for_start")
+                
         tempState.run = play_game
 
         def play_game_exit():
             self.middleware.unSubscribeTCPUnicastListener(self.onReceiveNewRound)
             self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
-            
-        tempState = self.State("player_wait_for_all_answers")
-        def player_wait_for_all_answers_entry():
-            self.middleware.subscribeTCPUnicastListener(self.collectInput)
-        tempState.entry = player_wait_for_all_answers_entry
-
-        def player_wait_for_all_answers():
-            pass    
-        tempState.run = player_wait_for_all_answers
-        def player_wait_for_all_answers_exit():
-            self.middleware.unSubscribeTCPUnicastListener(self.collectInput)
-            self.question_answer = ""
-        tempState.exit = player_wait_for_all_answers_exit
+            self.answered = False
+            self.question_answer = ''
+            self.commited_answers = 0
+        tempState.exit = play_game_exit
+        
 
 
     def listenForPlayersList(self, messengerUUID:str, messengerSocket, command:str, playersList:str):
@@ -179,10 +165,8 @@ class Statemachine():
 
     def respondWithPlayerList(self, messengerUUID:str, command:str, playerName:str):
         if command == 'enterLobby':
-            print(messengerUUID)
             self.players.addPlayer(messengerUUID, playerName)
             if self.middleware.MY_UUID == self.middleware.leaderUUID:
-                print("only I am the leader")
                 self.middleware.sendIPAdressesto(messengerUUID)
                 responseCommand = 'PlayerList'
                 responseData = self.players.toString()
@@ -196,16 +180,16 @@ class Statemachine():
         if messageCommand == 'playerResponse':
             print("received_input")
             self.commited_answers += 1
-            print(self.commited_answers)
             if messageData == self.question_answer[-1]:
                 print("add_points")
                 self.players.addPoints(messengerUUID, 10)
-                self.players.printLobby()
+            self.players.printLobby()
 
             if self.middleware.leaderUUID == self.middleware.MY_UUID and self.commited_answers == (len(self.players.playerList) -1):
+                print("fullfilled leader")
                 self.switchToState("start_new_round")
 
-            elif self.commited_answers == (len(self.players.playerList) -2):
+            elif self.middleware.leaderUUID != self.middleware.MY_UUID and self.commited_answers == (len(self.players.playerList) -2) and self.answered:
                 self.switchToState("wait_for_start")
                 
     def runLoop(self):
