@@ -43,6 +43,7 @@ class Statemachine():
 
     def __init__(self):
         self.question_answer = ""
+        self.commited_answers = 0
         Statemachine.UUID = str(uuid.uuid4())
         self.middleware = Middleware(Statemachine.UUID, self)
         Statemachine.currentState = "Initializing"
@@ -94,8 +95,7 @@ class Statemachine():
         def start_new_round():
             print_lock = threading.Lock()
             with print_lock:
-                print("Your message here")
-                self.question = input("What is your question?")
+                self.question = input("\n What is your question? \n")
                 self.answer_a = input("Enter answer possibility a: ")
                 self.answer_b = input("Enter answer possibility b: ")
                 self.answer_c = input("Enter answer possibility c: ")
@@ -136,16 +136,15 @@ class Statemachine():
             if self.question_answer != '':
                 self.switchToState("play_game")
             elif self.middleware.leaderUUID == Middleware.MY_UUID:
-                Statemachine.switchStateTo("wait_for_peers")
+                self.switchToState("wait_for_peers")
         tempState.run = wait_for_start
 
         tempState = self.State("play_game")
         def play_game():
             print(f"Question: {self.question_answer[0]}")
-            print(
-                f"""a): {self.question_answer[1]} \n
-                    b): {self.question_answer[2]} \n
-                    c): {self.question_answer[3]} \n""")
+            print(f"       a) {self.question_answer[1]}")
+            print(f"       b) {self.question_answer[2]}")
+            print(f"       c) {self.question_answer[3]}")
             answer = input("Enter your answer: ")
             if answer == str(self.question_answer[4]):
                 print("correct Answer")
@@ -153,6 +152,8 @@ class Statemachine():
             else:
                 print("wrong Answer")
                 self.middleware.sendTcpMessageTo(self.middleware.leaderUUID, "playerResponse", "False")
+            self.switchToState("wait_for_start")
+            print("Wait for new Question")
         tempState.run = play_game
 
         def play_game_exit():
@@ -186,9 +187,16 @@ class Statemachine():
 
     def collectInput(self, messengerUUID, clientsocket, messageCommand, messageData):
         if messageCommand == 'playerResponse':
-            if messageData == self.question_answer[-1]:
+            self.commited_answers += 1
+            if messageData == "True":
                 self.players.addPoints(messengerUUID, 10)
-                self.players.printLobby()
+
+        if self.commited_answers == (len(self.players.playerList) - 1):
+            self.commited_answers = 0
+            self.players.printLobby()
+            self.switchToState("start_new_round")
+            print("Lets Start new Round")
+
 
     def toLobby(self, messengerUUID, clientsocket, messageCommand, messageData):
         if messageCommand == 'toLobby':

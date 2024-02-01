@@ -308,7 +308,7 @@ class Middleware():
             # if same UUID
             if data == Middleware.MY_UUID:
                 # i'm Simon
-                print('\nI am the new Simon\n')
+                print('\nI am the new Game-Master\n')
                 # reliably multicast my UUID to all players
                 self.multicastReliable('leaderElected', Middleware.MY_UUID)
                 # set leaderUUID as my UUID
