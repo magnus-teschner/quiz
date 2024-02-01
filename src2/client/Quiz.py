@@ -108,7 +108,6 @@ class Statemachine():
 
         tempState = self.State("wait_for_responses")
         def wait_for_responses_entry():
-            self.receiver_counter = 0
             self.middleware.subscribeTCPUnicastListener(self.collectInput)
         tempState.entry = wait_for_responses_entry
 
