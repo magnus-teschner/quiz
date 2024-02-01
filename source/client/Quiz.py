@@ -185,7 +185,8 @@ class Statemachine():
             self.commited_answers += 1
             if messageData == self.question_answer[-1]:
                 self.players.addPoints(messengerUUID, 10)
-            self.players.printLobby()
+            if self.middleware.leaderUUID == self.middleware.MY_UUID or self.answered:
+                self.players.printLobby()
 
             if self.middleware.leaderUUID == self.middleware.MY_UUID and self.commited_answers == (len(self.players.playerList) -1):
                 self.switchToState("start_new_round")
