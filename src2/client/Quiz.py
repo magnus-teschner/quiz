@@ -147,7 +147,12 @@ class Statemachine():
                     b): {self.question_answer[2]} \n
                     c): {self.question_answer[3]} \n""")
             answer = input("Enter your answer: ")
-            self.middleware.multicastReliable("playerResponse", answer)
+            if answer == str(self.question_answer[4]):
+                print("correct Answer")
+                self.middleware.sendTcpMessageTo(self.middleware.leaderUUID, "playerResponse", "True")
+            else:
+                print("wrong Answer")
+                self.middleware.sendTcpMessageTo(self.middleware.leaderUUID, "playerResponse", "False")
         tempState.run = play_game
 
         def play_game_exit():
