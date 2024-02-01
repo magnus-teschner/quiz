@@ -31,15 +31,14 @@ BROADCAST_IP = net.broadcast_address.exploded
 class Middleware():
     
     ipAdresses = {} # {uuid: (ipadress, port)} (str , int)
-    #MY_UUID = ''
-
+    MY_UUID = ''
     neighborUUID = None
     neighborAlive = False
     
 
 
     def __init__(self,UUID, statemashine):
-        self.MY_UUID = UUID 
+        Middleware.MY_UUID = UUID 
         self.statemashine =  statemashine
         self._broadcastHandler = BroadcastHandler()
         self._unicastHandler = UDPUnicastHandler()
