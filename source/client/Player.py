@@ -18,6 +18,10 @@ class PlayersList():
     
     def addPlayer(self, uuid:str, name:str, points:int = 0):
         self.playerList[uuid] = Player(points, uuid,name)
+
+    def removePlayer(self, uuid: str):
+        del self.playerList[uuid]
+
     
     def toString(self): # , , #
         s = ''

@@ -181,6 +181,10 @@ class Statemachine():
                 self.question_answer = ast.literal_eval(messageData)
 
     def collectInput(self, messengerUUID, clientsocket, messageCommand, messageData):
+        print("\n Received \n")
+        print(self.question_answer)
+        print(self.commited_answers)
+        print(self.answered)
         if messageCommand == 'playerResponse':
             self.commited_answers += 1
             if messageData == self.question_answer[-1]:

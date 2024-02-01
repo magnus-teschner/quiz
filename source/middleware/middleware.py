@@ -1,42 +1,27 @@
-"""
-Here are all the sockets.
-There shall not be any sockets outside of this file.
-
-There shall be one socket in one seperate thread (multithreading)
-for every tcp connections
-also one socket in a thread for the udp socket for broadcast
-"""
 import uuid
 import threading
 import socket
 import ipaddress
 from time import sleep
-usleep = lambda x: sleep(x/1000_000.0) # sleep for x microseconds
 from dataclasses import dataclass
 
 
 
 ######################################### PARAMETER Constants
 BROADCAST_PORT = 61424
-BUFFER_SIZE = 1024 # bytes
-MSGLEN = 10000 # bytes?   # maximum length of message over tcp
+BUFFER_SIZE = 1024
 SUBNETMASK = "255.255.255.0"
-BROADCAST_LISTENER_SLEEP = 10 # microseconds
 
 IP_ADRESS_OF_THIS_PC = socket.gethostbyname(socket.gethostname())
 net = ipaddress.IPv4Network(IP_ADRESS_OF_THIS_PC + '/' + SUBNETMASK, False)
 BROADCAST_IP = net.broadcast_address.exploded
 
-
 class Middleware():
-    
     ipAdresses = {} # {uuid: (ipadress, port)} (str , int)
     MY_UUID = ''
     neighborUUID = None
     neighborAlive = False
     
-
-
     def __init__(self,UUID, statemashine):
         Middleware.MY_UUID = UUID 
         self.statemashine =  statemashine
@@ -46,13 +31,10 @@ class Middleware():
         self.subscribeTCPUnicastListener(self._updateAdresses)
         self.subscribeTCPUnicastListener(self._checkForVotingAnnouncement)
 
-        # Create Thread to send heartbeat
         self.sendHB = threading.Thread(target=self._sendHeartbeats)
         self.sendHB.start()
         Middleware.neighborAlive = False
-        # Subscribe heartbeat handler to udp unicastlistener
         self.subscribeUnicastListener(self._listenHeartbeats)
-        # Subscribe heartbeat lost player handler to tcp unicastlistener
         self.subscribeTCPUnicastListener(self._listenLostPlayer)
 
         self.leaderUUID = ''
@@ -64,8 +46,6 @@ class Middleware():
 
             uuidList = list(ordered)
             if uuidList[ownIndex - 1] != ownUUID:
-                #print("neighbor is\t")
-                #print(uuidList[ownIndex - 1])
                 return uuidList[ownIndex - 1]
 
     def _sendHeartbeats(self):
@@ -83,6 +63,7 @@ class Middleware():
                 elif not Middleware.neighborAlive and ctr >= 3:
                     ctr = 0
                     Middleware.ipAdresses.pop(Middleware.neighborUUID, None)
+                    self.statemashine.players.removePlayer(Middleware.neighborUUID)
                     self.multicastReliable('lostplayer', Middleware.neighborUUID)
                     if Middleware.neighborUUID == self.leaderUUID:
                         self.initiateVoting()
@@ -104,6 +85,7 @@ class Middleware():
         if command == 'lostplayer':           
             Middleware.ipAdresses.pop(data, None)            
             Middleware.neighborUUID = None
+            self.statemashine.players.removePlayer(data)
     
 
     @classmethod
@@ -162,18 +144,7 @@ class Middleware():
     
     def unSubscribeTCPUnicastListener(self, rmFunc):
         self._tcpUnicastHandler.unSubscribeTCPUnicastListener(rmFunc)
-    
-    @classmethod
-    def subscribeOrderedDeliveryQ(cls, observer_func):
-        """observer_func gets called every time this a new message gets queued in the delivery queue
-        Args:
-            observer_func ([type]): observer_function needs to have observer_func(self, messengerUUID:str, command:str, data:str) 
-        """
-        cls.orderedReliableMulticast_ListenerList.append(observer_func)
-    @classmethod
-    def unSubscribeOrderedDeliveryQ(cls, rmFunc):
-        cls.orderedReliableMulticast_ListenerList = [x for x in cls.orderedReliableMulticast_ListenerList if x != rmFunc]
-        
+            
     def _updateAdresses(self, messengerUUID:str, clientsocket, command:str, data:str):
         """_updateAdresses recieves and decodes the IPAdresses List from the function 
         sendIPAdressesto(self,uuid)
@@ -186,31 +157,25 @@ class Middleware():
             data = data.split('$')
             self.leaderUUID = data[0]
             secondArgument = data[1]
-            removedLastHashtag = secondArgument[0:-1] # everything, but the last character
+            removedLastHashtag = secondArgument[0:-1]
             for addr in removedLastHashtag.split('#'):
                 addrlist = addr.split(',')
                 self.addIpAdress(addrlist[0], (addrlist[1], int(addrlist[2])))
-                #                 uuid           ipadress           port of the unicastListener
 
     def _checkForVotingAnnouncement(self, messengerUUID:str, clientsocket:socket.socket, command:str, data:str):
         if command == 'voting':
-            # if same UUID
             if data == Middleware.MY_UUID:
-                # i'm Simon
                 print('\nI am the new Game-Master\n')
-                # reliably multicast my UUID to all players
                 self.multicastReliable('leaderElected', Middleware.MY_UUID)
-                # set leaderUUID as my UUID
                 self.leaderUUID = Middleware.MY_UUID
-                # set GameState to simon_startNewRound
-                # self.statemashine.switchStateTo('simon_startNewRound')
-            # if smaller UUID
+                self.statemashine.switchToState("start_new_round")
             elif data < Middleware.MY_UUID:
                 # send my UUID to neighbour
                 command = 'voting'
                 data = Middleware.MY_UUID
                 #print('\nsend voting command with my UUID (' + Middleware.MY_UUID + ') to lowerNeighbour')
                 self.sendTcpMessageTo(self.findLowerNeighbour(), command, data)
+                pass
             # if greater UUID
             elif data > Middleware.MY_UUID:
                 # send received UUID to neighbour
@@ -220,8 +185,10 @@ class Middleware():
         elif command == 'leaderElected':
             print('new Leader got elected\n')
             self.leaderUUID = data
-            # set GameState to state_player_waitGameStart_f
-            #self.statemashine.switchStateTo('player_waitGameStart')
+            self.answered = False
+            self.question_answer = ''
+            self.commited_answers = 0
+            self.statemashine.switchToState("wait_for_start")
 
     # diese Funktion muss aufgerufen werden um ein neues Voting zu starten
     def initiateVoting(self):
@@ -267,10 +234,6 @@ class UDPUnicastHandler():
     def _listenUnicast(self):
         #print("listenUDP Unicast Thread has started and not blocked Progress (by running in the background)")
         while True:
-            #print('\nUnicastHandler: Waiting to receive unicast message...\n')
-            # Receive message from client
-            # Code waits here until it recieves a unicast to its port
-            # thats why this code needs to run in a different thread
             try:
                 data, address = self._server_socket.recvfrom(BUFFER_SIZE)
                 data = data.decode('utf-8')
@@ -324,29 +287,16 @@ class TCPUnicastHandler():
         sendSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # AF_INET means that this socket Internet Protocol v4 addresses
         sendSocket.bind(('', 0))
 
-        #print('\n\naddr for connect:   ', addr)
         try:
             sendSocket.connect(addr)
             messageBytes = str.encode(Middleware.MY_UUID + '_'+IP_ADRESS_OF_THIS_PC + '_'+str(UDPUnicastHandler._serverPort)+'_'+message)
             sendSocket.send(messageBytes)
-            #print('TCPUnicastHandler: sent message: ', message,"\n\tto: ", addr)
         except ConnectionRefusedError:
-            #print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  ERROR')
-            #print('Process on address ', addr, 'is not responding')
             pass
         finally:
             sendSocket.close() # Further sends are disallowed
         
         
-        # ##### send data in chunks
-        # totalsent = 0
-        # while totalsent < MSGLEN:
-        #     sent = self.sendSocket.send(messageBytes[totalsent:])
-        #     if sent == 0:
-        #         raise RuntimeError("socket connection broken")
-        #     totalsent = totalsent + sent
-        # ##### send data in chunks
-    
     def sendTcpRequestTo(self, addr:tuple, message:str):
         # this is blocking
         sendSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # AF_INET means that this socket Internet Protocol v4 addresses
@@ -356,9 +306,7 @@ class TCPUnicastHandler():
             sendSocket.connect(addr)
             messageBytes = str.encode(Middleware.MY_UUID + '_'+IP_ADRESS_OF_THIS_PC + '_'+str(UDPUnicastHandler._serverPort)+'_'+message)
             sendSocket.send(messageBytes)
-            #print('TCPUnicastHandler: sent message: ', message,"\n\tto: ", addr)
             response = sendSocket.recv(BUFFER_SIZE).decode('utf-8')
-            #print('TCPUnicastHandler: got response: ', response,"\n\tfrom: ", addr)
         except ConnectionRefusedError:
             print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  ERROR')
             print('Process on address ', addr, 'is not connecting')
@@ -369,65 +317,41 @@ class TCPUnicastHandler():
 
 
     def _listenTCPUnicast(self):
-        #print("listenTCP Unicast Thread has started and not blocked Progress (by running in the background)")
-        self._server_socket.listen(5) # The argument to listen tells the socket library that we want it to queue up as many as 5 connect requests (the normal max) before refusing outside connections. 
-            #https://docs.python.org/3/howto/sockets.html
-        # https://github.com/TejasTidke/Socket-Programming-TCP-Multithreading/blob/master/server/multiserver.py
+        self._server_socket.listen(5)
+
         while True:
             clientsocket, address = self._server_socket.accept()
-            #print("TCPUnicastHandler has accept() ed a connection")
             clientsocket.settimeout(60)
-            # star a new thread, that is responsible for one new request from one peer.
-            # in this thread, they can exchange more messages
             threading.Thread(target = self._listenToClient, args = (clientsocket,address)).start()
 
 
     def _listenToClient(self, clientsocket:socket.socket, address):
         data = clientsocket.recv(BUFFER_SIZE)
-        ################# recieve data in chunks
-        # chunks = []
-        # bytes_recd = 0
-        # while bytes_recd < MSGLEN:
-        #     chunk = clientsocket.recv(min(MSGLEN - bytes_recd, BUFFER_SIZE))
-        #     if chunk == b'':
-        #         raise RuntimeError("socket connection broken")
-        #     chunks.append(chunk)
-        #     bytes_recd = bytes_recd + len(chunk)
-        # data = b''.join(chunks)
-        ################# recieve data in chunks
         data = data.decode('utf-8')
 
         if data:
-            #print(data)
             data=data.split('_')
             messengerUUID = data[0]
             messengerIP = data[1]
-            messengerPort = int(data[2])    # this should be the port where the unicast listener socket 
-                                            #(of the sender of this message) is listening on
-            #assert address ==  (messengerIP, messengerPort)                              
+            messengerPort = int(data[2])
+                             
             message=data[3]
-            #print(message)
             messageSplit= message.split(':')
             assert len(messageSplit) == 2, "There should not be a ':' in the message"
             messageCommand = messageSplit[0]
             messageData = messageSplit[1]
-            #print("TCP Message recieved;\n messageCommand \t :",messageCommand, "\n messageData    \t :",messageData )
             self.incommingUnicastHistory.append((message, address))
             for observer_func in self._listenerList:
                 observer_func(messengerUUID, clientsocket, messageCommand, messageData)
-        # after the dedicated function has returned (, or no function wanted to deal with this request)
-        # the socket can be closed
         clientsocket.close()
 
     def subscribeTCPUnicastListener(self, observer_func):
         self._listenerList.append(observer_func)
         
     def unSubscribeTCPUnicastListener(self, rmFunc):
-        # remove all occurences of Function
         self._listenerList = [x for x in self._listenerList if x != rmFunc]
 class BroadcastHandler():
     def __init__(self):
-        #self.incommingBroadcastQ = Q ()
         self.incommingBroadcastHistory = []
         self._listenerList = []
 
